@@ -8,6 +8,18 @@ var requestAuthPhase1 = firebase.functions().httpsCallable('requestAuthPhase1');
 var requestAuthPhase2 = firebase.functions().httpsCallable('requestAuthPhase2');
 
 /////////////////////////////////////////////////////////
+//             Firebase Cloud Functions                //
+/////////////////////////////////////////////////////////
+
+firebase.auth().onAuthStateChanged(function(user) {
+  if (user) {
+    console.log(user);
+  } else {
+    console.log('User is signed out.');
+  }
+});
+
+/////////////////////////////////////////////////////////
 //                Encode Functions                     //
 /////////////////////////////////////////////////////////
 
@@ -160,7 +172,10 @@ function authorize(){
     return requestAuthPhase2({publicAddress: publicAddress, random: randomHex, signature: ArrayToHex(signatureArrayDER)});
   })
   .then((result) => {
-    console.log(result);
+    return firebase.auth().signInWithCustomToken(result.data.token);
+  })
+  .catch((err)=>{
+    console.log(err);
   });
 }
 
