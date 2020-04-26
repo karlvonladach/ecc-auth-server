@@ -12,9 +12,6 @@ function verifyPublicAddress(publicAddress, publicKeyBase64){
   const SPKI_HEADER_LEN = 26;
   const KEY_LEN = 65;
   var publicKeySXY = Buffer.from(publicKeyBase64, 'base64').slice(SPKI_HEADER_LEN, SPKI_HEADER_LEN + KEY_LEN);
-
-  console.log("public key: ", publicKeySXY);
-  console.log("after sha256: ",crypto.createHash('sha256').update(publicKeySXY).digest());
   
   publicKeyHash = Buffer.concat([ Buffer.from([0x00]), 
                                   crypto.createHash('ripemd160')
@@ -23,22 +20,15 @@ function verifyPublicAddress(publicAddress, publicKeyBase64){
                                                       .digest())
                                         .digest()]);
 
-  console.log("after ripemd160: ", publicKeyHash);
-
   publicKeyChecksum = crypto.createHash('sha256')
                             .update(crypto.createHash('sha256')
                                           .update(publicKeyHash)
                                           .digest())
                             .digest()
                             .slice(0,4);
-
-  console.log("after crc: ", publicKeyChecksum);
   
   pubAddr = Buffer.concat([publicKeyHash, 
                            publicKeyChecksum]);
-
-  console.log(Base58.encode(pubAddr));
-  console.log(publicAddress);
 
   return (Base58.encode(pubAddr) === publicAddress);
 }
@@ -95,11 +85,9 @@ exports.requestAuthPhase1 = functions.https.onCall((data, context) => {
     }
   })
   .then((ref)=>{
-    console.log("auth1 ok");
     return {status: 'OK', random: random.toString('hex')};
   })
   .catch((err)=>{
-    console.log("auth1 error");
     console.log(err);
     return {status: error}; 
   });
@@ -128,15 +116,16 @@ exports.requestAuthPhase2 = functions.https.onCall((data, context) => {
     }
     else {
       console.log('signature valid');
-      //TODO: remove random number from database
-      return admin.auth().createCustomToken(data.publicAddress);
+      return userRef.set({random: null}, {merge: true});
     }
+  })
+  .then((ref)=>{
+    return admin.auth().createCustomToken(data.publicAddress);
   })
   .then((customToken)=>{
     return {status: 'OK', token: customToken};
   })
   .catch((err) => {
-    console.log("auth2 error");
     console.log(err);
     return {status: err};
   });
