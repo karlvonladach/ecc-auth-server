@@ -45,10 +45,10 @@ function verifyPublicAddress(publicAddress, publicKeyBase64){
 
 //Verifies if the signature is valid
 function verifySignature(dataHex, signatureHex, publicKeyBase64){
-  return crypto.createVerify('SHA256')
-               .update(dataHex,'hex')
-               .end()
-               .verify({key: '-----BEGIN PUBLIC KEY-----\n' + publicKeyBase64 + '\n-----END PUBLIC KEY-----', format: 'pem', type: 'spki'}, signatureHex, 'hex');
+  const verify =  crypto.createVerify('SHA256');
+  verify.update(dataHex,'hex');
+  verify.end();
+  return verify.verify({key: '-----BEGIN PUBLIC KEY-----\n' + publicKeyBase64 + '\n-----END PUBLIC KEY-----', format: 'pem', type: 'spki'}, signatureHex, 'hex');
 }
 
 //receives public key and public address, and saves it into the database, using the public address as key/uid
