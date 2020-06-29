@@ -125,6 +125,11 @@ var publicKey;
 var privateKey;
 var publicAddress;
 
+function log(logtext){
+  logarea.value = logarea.value + logtext + '\r\n\r\n';
+  console.log(logtext);
+}
+
 function generate(){
   window.crypto.subtle.generateKey(
     {
@@ -140,12 +145,11 @@ function generate(){
   })
   .then((pubAddr)=>{
     publicAddress = pubAddr;
-    pa.value = pubAddr;
+    log('Public address generated: ' + pubAddr);
     return crypto.subtle.exportKey('jwk', privateKey);
   }).then((exportedKey) => {
-    d.value = exportedKey.d;
-    x.value = exportedKey.x;
-    y.value = exportedKey.y;
+    log('Private key generated: ' + exportedKey.d);
+    log('Public key generated: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
   });
 }
 
@@ -155,34 +159,39 @@ function register() {
     return registerPublicKey({publicAddress: publicAddress, publicKey: Base64encode(exportedKey)});
   })
   .then(function(result) {
+    log('Public key and public address sent to the server');
     console.log(result);
   });
 }
 
 function authorize(){
   var randomHex;
+  log('Requesting random number from the server associated with our public address...');
   requestAuthPhase1({publicAddress: publicAddress})
   .then((result)=>{
     randomHex = result.data.random;
+    log('Random number received: ' + randomHex);
+    log('Signing random number...');
     return window.crypto.subtle.sign({name: "ECDSA", hash: {name: "SHA-256"}}, privateKey, HexToArray(randomHex));
   })
   .then((signature)=>{
     signatureArray = new Uint8Array(signature);
     signatureArrayDER = DERencode(signatureArray.slice(0,32),signatureArray.slice(32,64));
+    log('Signature: ' + ArrayToHex(signatureArrayDER));
+    log('Sending signature to server');
     return requestAuthPhase2({publicAddress: publicAddress, random: randomHex, signature: ArrayToHex(signatureArrayDER)});
   })
   .then((result) => {
+    log('Authentication successful. Received token: ' + result.data.token);
     return firebase.auth().signInWithCustomToken(result.data.token);
   })
   .catch((err)=>{
+    log('Authentication failed. Error: ' + err);
     console.log(err);
   });
 }
 
-var d = document.getElementById("privateKey");
-var x = document.getElementById("publicKeyX");
-var y = document.getElementById("publicKeyY");
-var pa = document.getElementById("publicAddress");
+var logarea = document.getElementById("log-area");
 
 document.getElementById('generate-button').addEventListener('click', generate);
 document.getElementById('register-button').addEventListener('click', register);
