@@ -164,7 +164,7 @@ function register() {
   });
 }
 
-function authorize(){
+function authenticate(){
   var randomHex;
   log('Requesting random number from the server associated with our public address...');
   requestAuthPhase1({publicAddress: publicAddress})
@@ -195,4 +195,4 @@ var logarea = document.getElementById("log-area");
 
 document.getElementById('generate-button').addEventListener('click', generate);
 document.getElementById('register-button').addEventListener('click', register);
-document.getElementById('auth-button').addEventListener('click', authorize);
+document.getElementById('auth-button').addEventListener('click', authenticate);
