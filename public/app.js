@@ -86,6 +86,13 @@ function HexToArray(string){
   return new Uint8Array(a);
 }
 
+function ArrayToArrayBuffer(bytes) {
+  const bytesAsArrayBuffer = new ArrayBuffer(bytes.length);
+  const bytesUint8 = new Uint8Array(bytesAsArrayBuffer);
+  bytesUint8.set(bytes);
+  return bytesAsArrayBuffer;
+}
+
 /////////////////////////////////////////////////////////
 //                Helper Functions                     //
 /////////////////////////////////////////////////////////
@@ -164,6 +171,123 @@ function register() {
   });
 }
 
+function store() {
+  const id = keyid.value;
+  const password = keypw.value;
+  const enc = new TextEncoder();
+  var   salt, iv;
+
+  if (id == "" || password == "") {
+    log("Missing KeyID or password");
+    return;
+  }
+
+  window.crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    {name: "PBKDF2"},
+    false,
+    ["deriveBits", "deriveKey"]
+  ).then((keyMaterial) => {
+    salt = window.crypto.getRandomValues(new Uint8Array(16));
+    return window.crypto.subtle.deriveKey(
+      {
+        "name": "PBKDF2",
+        salt: salt,
+        "iterations": 100000,
+        "hash": "SHA-256"
+      },
+      keyMaterial,
+      { "name": "AES-GCM", "length": 256},
+      true,
+      [ "wrapKey", "unwrapKey" ]
+    );
+  }).then((wrappingKey)=>{
+    iv = window.crypto.getRandomValues(new Uint8Array(12));
+    return window.crypto.subtle.wrapKey(
+      "jwk",
+      privateKey,
+      wrappingKey,
+      {
+        name: "AES-GCM",
+        iv: iv
+      }
+    );
+  }).then((wrappedKey) => {
+    storeValue = {salt: ArrayToHex(salt), iv: ArrayToHex(iv), wrappedKey: ArrayToHex(new Uint8Array(wrappedKey))};
+    log('Saving wrapped private key:' + JSON.stringify(storeValue));
+    window.localStorage.setItem(id,JSON.stringify(storeValue));
+  });
+}
+
+function load() {
+  const id = keyid.value;
+  const password = keypw.value;
+  const enc = new TextEncoder();
+
+  if (id == "" || password == "") {
+    log("Missing KeyID or password");
+    return;
+  }
+
+  const storeValue = JSON.parse(window.localStorage.getItem(id));
+  log('Loading wrapped private key:' + JSON.stringify(storeValue));
+  const iv = ArrayToArrayBuffer(HexToArray(storeValue.iv));
+  const salt = ArrayToArrayBuffer(HexToArray(storeValue.salt));
+  const wrappedKey = ArrayToArrayBuffer(HexToArray(storeValue.wrappedKey));
+
+  window.crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    {name: "PBKDF2"},
+    false,
+    ["deriveBits", "deriveKey"]
+  ).then((keyMaterial) => {
+    return window.crypto.subtle.deriveKey(
+      {
+        "name": "PBKDF2",
+        salt: salt,
+        "iterations": 100000,
+        "hash": "SHA-256"
+      },
+      keyMaterial,
+      { "name": "AES-GCM", "length": 256},
+      true,
+      [ "wrapKey", "unwrapKey" ]
+    );
+  })
+  .then((unwrappingKey)=>{
+    return window.crypto.subtle.unwrapKey(
+      "jwk",
+      wrappedKey,
+      unwrappingKey,
+      {
+        name: "AES-GCM",
+        iv: iv
+      },
+      {
+        name: "ECDSA",
+        namedCurve: "P-256"
+      },
+      true,
+      ["sign"]
+    );
+  })
+  .then((unwrappedKey)=>{
+    privateKey = unwrappedKey;
+    return crypto.subtle.exportKey('jwk', privateKey);
+  })
+  .then((exportedKey) => {
+    console.log(exportedKey);
+    log('Private key loaded: ' + exportedKey.d);
+    log('Public key loaded: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
+  })
+  .catch((err) =>{
+    log ('error while loading key: ' + err);
+  });
+
+}
+
 function authenticate(){
   var randomHex;
   log('Requesting random number from the server associated with our public address...');
@@ -192,7 +316,11 @@ function authenticate(){
 }
 
 var logarea = document.getElementById("log-area");
+var keyid = document.getElementById("key-id");
+var keypw = document.getElementById("key-pw");
 
 document.getElementById('generate-button').addEventListener('click', generate);
 document.getElementById('register-button').addEventListener('click', register);
+document.getElementById('store-button').addEventListener('click', store);
+document.getElementById('load-button').addEventListener('click', load);
 document.getElementById('auth-button').addEventListener('click', authenticate);
