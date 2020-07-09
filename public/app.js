@@ -97,7 +97,30 @@ function ArrayToArrayBuffer(bytes) {
 //                Helper Functions                     //
 /////////////////////////////////////////////////////////
 
-function generatePublicAddress(publicKey){
+function derivePublicKey(privateKey){
+  return crypto.subtle.exportKey('jwk', privateKey)
+  .then((exportedKey) => {
+    return crypto.subtle.importKey(
+      'jwk',
+      {
+        crv: "P-256",
+        ext: true,
+        key_ops: ["verify"],
+        kty: "EC",
+        x: exportedKey.x,
+        y: exportedKey.y
+      },
+      {
+        name: "ECDSA",
+        namedCurve: "P-256"
+      },
+      true,
+      ["verify"]
+    );
+  });
+}
+
+function derivePublicAddress(publicKey){
   var publicKeyHash = new Uint8Array(21);
   var pubAddr = new Uint8Array(25);
 
@@ -124,7 +147,7 @@ function generatePublicAddress(publicKey){
   });
 }
 
-function getKeyFromPassword(password, salt){
+function generateKeyFromPassword(password, salt){
   const enc = new TextEncoder();
 
   return window.crypto.subtle.importKey(
@@ -183,7 +206,7 @@ function generate(){
       log('Public key generated: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
     });
 
-    generatePublicAddress(publicKey).then((pubAddr) => {
+    derivePublicAddress(publicKey).then((pubAddr) => {
       publicAddress = pubAddr;
       log('Public address generated: ' + pubAddr);
       return ;
@@ -216,7 +239,7 @@ function store() {
   const salt = window.crypto.getRandomValues(new Uint8Array(16));
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
 
-  getKeyFromPassword(password, salt)
+  generateKeyFromPassword(password, salt)
   .then((wrappingKey)=>{
     return window.crypto.subtle.wrapKey(
       "jwk",
@@ -252,7 +275,7 @@ function load() {
 
   log('Loaded wrapped private key:' + JSON.stringify(storeValue));
 
-  getKeyFromPassword(password, salt)
+  generateKeyFromPassword(password, salt)
   .then((unwrappingKey)=>{
     return window.crypto.subtle.unwrapKey(
       "jwk",
@@ -275,11 +298,25 @@ function load() {
 
     crypto.subtle.exportKey('jwk', privateKey).then((exportedKey) => {
       log('Private key loaded: ' + exportedKey.d);
-      log('Public key loaded: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
+    });
+
+    derivePublicKey(privateKey)
+    .then((derivedKey) => {
+      publicKey = derivedKey;
+
+      crypto.subtle.exportKey('jwk', publicKey).then((exportedKey) => {
+        log('Public key loaded: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
+      });
+
+      derivePublicAddress(publicKey).then((pubAddr) => {
+        publicAddress = pubAddr;
+        log('Public address loaded: ' + pubAddr);
+        return ;
+      });
     });
   })
   .catch((err) =>{
-    log ('error while loading key: ' + err);
+    log ('error while loading/decrypting key: ' + err);
   });
 }
 
