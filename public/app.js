@@ -124,6 +124,31 @@ function generatePublicAddress(publicKey){
   });
 }
 
+function getKeyFromPassword(password, salt){
+  const enc = new TextEncoder();
+
+  return window.crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    {name: "PBKDF2"},
+    false,
+    ["deriveBits", "deriveKey"]
+  ).then((keyMaterial) => {
+    return window.crypto.subtle.deriveKey(
+      {
+        "name": "PBKDF2",
+        salt: salt,
+        "iterations": 100000,
+        "hash": "SHA-256"
+      },
+      keyMaterial,
+      { "name": "AES-GCM", "length": 256},
+      true,
+      [ "wrapKey", "unwrapKey" ]
+    );
+  });
+}
+
 /////////////////////////////////////////////////////////
 //                   GUI Functions                     //
 /////////////////////////////////////////////////////////
@@ -145,24 +170,31 @@ function generate(){
     },
     true,
     ["sign", "verify"]
-  ).then((keyPair) => {
-    publicKey = keyPair.publicKey;
+  )
+  .then((keyPair) => {
     privateKey = keyPair.privateKey;
-    return generatePublicAddress(publicKey); 
-  })
-  .then((pubAddr)=>{
-    publicAddress = pubAddr;
-    log('Public address generated: ' + pubAddr);
-    return crypto.subtle.exportKey('jwk', privateKey);
-  }).then((exportedKey) => {
-    log('Private key generated: ' + exportedKey.d);
-    log('Public key generated: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
+    publicKey = keyPair.publicKey;
+
+    crypto.subtle.exportKey('jwk', privateKey).then((exportedKey) => {
+      log('Private key generated: ' + exportedKey.d);
+    });
+
+    crypto.subtle.exportKey('jwk', publicKey).then((exportedKey) => {
+      log('Public key generated: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
+    });
+
+    generatePublicAddress(publicKey).then((pubAddr) => {
+      publicAddress = pubAddr;
+      log('Public address generated: ' + pubAddr);
+      return ;
+    });
   });
 }
 
 function register() {
   crypto.subtle.exportKey('spki', publicKey)
   .then ((exportedKey)=>{
+    log('Sending public key and public address to the server...');
     return registerPublicKey({publicAddress: publicAddress, publicKey: Base64encode(exportedKey)});
   })
   .then(function(result) {
@@ -174,36 +206,18 @@ function register() {
 function store() {
   const id = keyid.value;
   const password = keypw.value;
-  const enc = new TextEncoder();
-  var   salt, iv;
 
   if (id == "" || password == "") {
     log("Missing KeyID or password");
     return;
   }
+  log('Saving wrapped private key...');
 
-  window.crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    {name: "PBKDF2"},
-    false,
-    ["deriveBits", "deriveKey"]
-  ).then((keyMaterial) => {
-    salt = window.crypto.getRandomValues(new Uint8Array(16));
-    return window.crypto.subtle.deriveKey(
-      {
-        "name": "PBKDF2",
-        salt: salt,
-        "iterations": 100000,
-        "hash": "SHA-256"
-      },
-      keyMaterial,
-      { "name": "AES-GCM", "length": 256},
-      true,
-      [ "wrapKey", "unwrapKey" ]
-    );
-  }).then((wrappingKey)=>{
-    iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const salt = window.crypto.getRandomValues(new Uint8Array(16));
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+  getKeyFromPassword(password, salt)
+  .then((wrappingKey)=>{
     return window.crypto.subtle.wrapKey(
       "jwk",
       privateKey,
@@ -213,9 +227,10 @@ function store() {
         iv: iv
       }
     );
-  }).then((wrappedKey) => {
+  })
+  .then((wrappedKey) => {
     storeValue = {salt: ArrayToHex(salt), iv: ArrayToHex(iv), wrappedKey: ArrayToHex(new Uint8Array(wrappedKey))};
-    log('Saving wrapped private key:' + JSON.stringify(storeValue));
+    log('Saved wrapped private key:' + JSON.stringify(storeValue));
     window.localStorage.setItem(id,JSON.stringify(storeValue));
   });
 }
@@ -223,39 +238,21 @@ function store() {
 function load() {
   const id = keyid.value;
   const password = keypw.value;
-  const enc = new TextEncoder();
 
   if (id == "" || password == "") {
     log("Missing KeyID or password");
     return;
   }
+  log('Loading wrapped private key...');
 
   const storeValue = JSON.parse(window.localStorage.getItem(id));
-  log('Loading wrapped private key:' + JSON.stringify(storeValue));
   const iv = ArrayToArrayBuffer(HexToArray(storeValue.iv));
   const salt = ArrayToArrayBuffer(HexToArray(storeValue.salt));
   const wrappedKey = ArrayToArrayBuffer(HexToArray(storeValue.wrappedKey));
 
-  window.crypto.subtle.importKey(
-    "raw",
-    enc.encode(password),
-    {name: "PBKDF2"},
-    false,
-    ["deriveBits", "deriveKey"]
-  ).then((keyMaterial) => {
-    return window.crypto.subtle.deriveKey(
-      {
-        "name": "PBKDF2",
-        salt: salt,
-        "iterations": 100000,
-        "hash": "SHA-256"
-      },
-      keyMaterial,
-      { "name": "AES-GCM", "length": 256},
-      true,
-      [ "wrapKey", "unwrapKey" ]
-    );
-  })
+  log('Loaded wrapped private key:' + JSON.stringify(storeValue));
+
+  getKeyFromPassword(password, salt)
   .then((unwrappingKey)=>{
     return window.crypto.subtle.unwrapKey(
       "jwk",
@@ -275,17 +272,15 @@ function load() {
   })
   .then((unwrappedKey)=>{
     privateKey = unwrappedKey;
-    return crypto.subtle.exportKey('jwk', privateKey);
-  })
-  .then((exportedKey) => {
-    console.log(exportedKey);
-    log('Private key loaded: ' + exportedKey.d);
-    log('Public key loaded: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
+
+    crypto.subtle.exportKey('jwk', privateKey).then((exportedKey) => {
+      log('Private key loaded: ' + exportedKey.d);
+      log('Public key loaded: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
+    });
   })
   .catch((err) =>{
     log ('error while loading key: ' + err);
   });
-
 }
 
 function authenticate(){
