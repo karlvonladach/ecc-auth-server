@@ -186,7 +186,7 @@ function log(logtext){
 }
 
 function generate(){
-  window.crypto.subtle.generateKey(
+  return window.crypto.subtle.generateKey(
     {
       name: "ECDSA",
       namedCurve: "P-256"
@@ -206,16 +206,16 @@ function generate(){
       log('Public key generated: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
     });
 
-    derivePublicAddress(publicKey).then((pubAddr) => {
+    return derivePublicAddress(publicKey).then((pubAddr) => {
       publicAddress = pubAddr;
       log('Public address generated: ' + pubAddr);
-      return ;
+      return;
     });
   });
 }
 
-function register() {
-  crypto.subtle.exportKey('spki', publicKey)
+function sendpublic() {
+  return crypto.subtle.exportKey('spki', publicKey)
   .then ((exportedKey)=>{
     log('Sending public key and public address to the server...');
     return registerPublicKey({publicAddress: publicAddress, publicKey: Base64encode(exportedKey)});
@@ -223,6 +223,7 @@ function register() {
   .then(function(result) {
     log('Public key and public address sent to the server');
     console.log(result);
+    return;
   });
 }
 
@@ -239,7 +240,7 @@ function store() {
   const salt = window.crypto.getRandomValues(new Uint8Array(16));
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
 
-  generateKeyFromPassword(password, salt)
+  return generateKeyFromPassword(password, salt)
   .then((wrappingKey)=>{
     return window.crypto.subtle.wrapKey(
       "jwk",
@@ -254,7 +255,7 @@ function store() {
   .then((wrappedKey) => {
     storeValue = {salt: ArrayToHex(salt), iv: ArrayToHex(iv), wrappedKey: ArrayToHex(new Uint8Array(wrappedKey))};
     log('Saved wrapped private key:' + JSON.stringify(storeValue));
-    window.localStorage.setItem(id,JSON.stringify(storeValue));
+    return window.localStorage.setItem(id,JSON.stringify(storeValue));
   });
 }
 
@@ -275,7 +276,7 @@ function load() {
 
   log('Loaded wrapped private key:' + JSON.stringify(storeValue));
 
-  generateKeyFromPassword(password, salt)
+  return generateKeyFromPassword(password, salt)
   .then((unwrappingKey)=>{
     return window.crypto.subtle.unwrapKey(
       "jwk",
@@ -300,7 +301,7 @@ function load() {
       log('Private key loaded: ' + exportedKey.d);
     });
 
-    derivePublicKey(privateKey)
+    return derivePublicKey(privateKey)
     .then((derivedKey) => {
       publicKey = derivedKey;
 
@@ -308,10 +309,10 @@ function load() {
         log('Public key loaded: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
       });
 
-      derivePublicAddress(publicKey).then((pubAddr) => {
+      return derivePublicAddress(publicKey).then((pubAddr) => {
         publicAddress = pubAddr;
         log('Public address loaded: ' + pubAddr);
-        return ;
+        return;
       });
     });
   })
@@ -323,7 +324,7 @@ function load() {
 function authenticate(){
   var randomHex;
   log('Requesting random number from the server associated with our public address...');
-  requestAuthPhase1({publicAddress: publicAddress})
+  return requestAuthPhase1({publicAddress: publicAddress})
   .then((result)=>{
     randomHex = result.data.random;
     log('Random number received: ' + randomHex);
@@ -344,15 +345,27 @@ function authenticate(){
   .catch((err)=>{
     log('Authentication failed. Error: ' + err);
     console.log(err);
+    return;
   });
+}
+
+function register(){
+  return generate().then(()=>{ return sendpublic(); }).then(()=>{ return store(); });
+}
+
+function login(){
+  return load().then(()=>{ return authenticate(); });
 }
 
 var logarea = document.getElementById("log-area");
 var keyid = document.getElementById("key-id");
 var keypw = document.getElementById("key-pw");
 
-document.getElementById('generate-button').addEventListener('click', generate);
+//document.getElementById('generate-button').addEventListener('click', generate);
+//document.getElementById('sendpublic-button').addEventListener('click', sendpublic);
+//document.getElementById('store-button').addEventListener('click', store);
+//document.getElementById('load-button').addEventListener('click', load);
+//document.getElementById('auth-button').addEventListener('click', authenticate);
+
 document.getElementById('register-button').addEventListener('click', register);
-document.getElementById('store-button').addEventListener('click', store);
-document.getElementById('load-button').addEventListener('click', load);
-document.getElementById('auth-button').addEventListener('click', authenticate);
+document.getElementById('login-button').addEventListener('click', login);
