@@ -20,80 +20,6 @@ firebase.auth().onAuthStateChanged(function(user) {
 });
 
 /////////////////////////////////////////////////////////
-//                Encode Functions                     //
-/////////////////////////////////////////////////////////
-
-function Base64encode(buffer){
-  const str = String.fromCharCode.apply(null, new Uint8Array(buffer));
-  return window.btoa(str);
-}
-
-function DERencode(x, y){
-  var tmp;
-  while (x.length > 0 && x[0] == 0){
-    x = x.slice(1);
-  }
-  if (x[0] > 127){
-    tmp = new Uint8Array(x.length + 1);
-    tmp[0] = 0;
-    tmp.set(x, 1);
-    x = tmp;
-  }
-  while (y.length > 0 && y[0] == 0){
-    y = y.slice(1);
-  }
-  if (y[0] > 127){
-    tmp = new Uint8Array(y.length + 1);
-    tmp[0] = 0;
-    tmp.set(y, 1);
-    y = tmp;
-  }
-  
-  var encoded = new Uint8Array(2 + 2 + x.length + 2 + y.length);
-  encoded[0] = 0x30; //array type
-  encoded[1] = 2 + x.length + 2 + y.length;
-  encoded[2] = 0x02; //integer type
-  encoded[3] = x.length;
-  encoded.set(x, 4);
-  encoded[4+x.length] =  0x02; //integer type
-  encoded[4+x.length+1] = y.length;
-  encoded.set(y, 4+x.length+2);
-
-  return encoded;
-}
-
-function ArrayToHex(array){
-  if (!array) {
-    return '';
-  }
-  var hexStr = '';
-  for (var i = 0; i < array.length; i++) {
-    var hex = (array[i] & 0xff).toString(16);
-    hex = (hex.length === 1) ? '0' + hex : hex;
-    hexStr += hex;
-  }
-  return hexStr.toUpperCase();
-}
-
-function HexToArray(string){
-  if (!string) {
-    return new Uint8Array();
-  }
-  var a = [];
-  for (var i = 0, len = string.length; i < len; i+=2) {
-    a.push(parseInt(string.substr(i,2),16));
-  }
-  return new Uint8Array(a);
-}
-
-function ArrayToArrayBuffer(bytes) {
-  const bytesAsArrayBuffer = new ArrayBuffer(bytes.length);
-  const bytesUint8 = new Uint8Array(bytesAsArrayBuffer);
-  bytesUint8.set(bytes);
-  return bytesAsArrayBuffer;
-}
-
-/////////////////////////////////////////////////////////
 //                Helper Functions                     //
 /////////////////////////////////////////////////////////
 
@@ -120,14 +46,15 @@ function derivePublicKey(privateKey){
   });
 }
 
-function derivePublicAddress(publicKey){
+function getRawPublicKey(publicKey){
+  return window.crypto.subtle.exportKey('raw',publicKey);
+}
+
+function derivePublicAddress(rawPublicKey){
   var publicKeyHash = new Uint8Array(21);
   var pubAddr = new Uint8Array(25);
 
-  return window.crypto.subtle.exportKey('raw',publicKey)
-  .then((exportedKey)=>{
-    return window.crypto.subtle.digest('SHA-256', exportedKey);
-  })
+  return window.crypto.subtle.digest('SHA-256', rawPublicKey)
   .then((hash1)=>{
     return ripemd160(hash1);
   })
@@ -206,7 +133,11 @@ function generate(){
       log('Public key generated: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
     });
 
-    return derivePublicAddress(publicKey).then((pubAddr) => {
+    return getRawPublicKey(publicKey)
+    .then((rawPublicKey) => {
+      return derivePublicAddress(rawPublicKey);
+    })
+    .then((pubAddr) => {
       publicAddress = pubAddr;
       log('Public address generated: ' + pubAddr);
       return;
@@ -227,7 +158,7 @@ function sendpublic() {
   });
 }
 
-function store() {
+function storekeys() {
   const id = keyid.value;
   const password = keypw.value;
 
@@ -259,7 +190,7 @@ function store() {
   });
 }
 
-function load() {
+function loadkeys() {
   const id = keyid.value;
   const password = keypw.value;
 
@@ -309,7 +240,11 @@ function load() {
         log('Public key loaded: \r\n    x: ' + exportedKey.x + '\r\n    y: ' + exportedKey.y);
       });
 
-      return derivePublicAddress(publicKey).then((pubAddr) => {
+      return getRawPublicKey(publicKey)
+      .then((rawPublicKey) => {
+        return derivePublicAddress(rawPublicKey);
+      })
+      .then((pubAddr) => {
         publicAddress = pubAddr;
         log('Public address loaded: ' + pubAddr);
         return;
@@ -349,13 +284,9 @@ function authenticate(){
   });
 }
 
-function register(){
-  return generate().then(()=>{ return sendpublic(); }).then(()=>{ return store(); });
-}
+const register = () => generate().then( () => sendpublic() ).then( () => storekeys());
 
-function login(){
-  return load().then(()=>{ return authenticate(); });
-}
+const login = () => loadkeys().then( () => authenticate() );
 
 var logarea = document.getElementById("log-area");
 var keyid = document.getElementById("key-id");
@@ -363,8 +294,8 @@ var keypw = document.getElementById("key-pw");
 
 //document.getElementById('generate-button').addEventListener('click', generate);
 //document.getElementById('sendpublic-button').addEventListener('click', sendpublic);
-//document.getElementById('store-button').addEventListener('click', store);
-//document.getElementById('load-button').addEventListener('click', load);
+//document.getElementById('store-button').addEventListener('click', storekeys);
+//document.getElementById('load-button').addEventListener('click', loadkeys);
 //document.getElementById('auth-button').addEventListener('click', authenticate);
 
 document.getElementById('register-button').addEventListener('click', register);

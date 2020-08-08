@@ -7,16 +7,17 @@ admin.initializeApp();
 
 const db = admin.firestore();
 
-//Verifies if the publicAddress is derived from the publicKey
-function verifyPublicAddress(publicAddress, publicKeyBase64){
+function getRawPublicKey(publicKeyBase64){
   const SPKI_HEADER_LEN = 26;
   const KEY_LEN = 65;
-  var publicKeySXY = Buffer.from(publicKeyBase64, 'base64').slice(SPKI_HEADER_LEN, SPKI_HEADER_LEN + KEY_LEN);
-  
+  return Buffer.from(publicKeyBase64, 'base64').slice(SPKI_HEADER_LEN, SPKI_HEADER_LEN + KEY_LEN);
+}
+
+function derivePublicAddress(rawPublicKey){
   publicKeyHash = Buffer.concat([ Buffer.from([0x00]), 
                                   crypto.createHash('ripemd160')
                                         .update(crypto.createHash('sha256')
-                                                      .update(publicKeySXY)
+                                                      .update(rawPublicKey)
                                                       .digest())
                                         .digest()]);
 
@@ -30,7 +31,12 @@ function verifyPublicAddress(publicAddress, publicKeyBase64){
   pubAddr = Buffer.concat([publicKeyHash, 
                            publicKeyChecksum]);
 
-  return (Base58.encode(pubAddr) === publicAddress);
+  return Base58.encode(pubAddr);
+}
+
+//Verifies if the publicAddress is derived from the publicKey
+function verifyPublicAddress(publicAddress, publicKeyBase64){
+  return (derivePublicAddress(getRawPublicKey(publicKeyBase64)) === publicAddress);
 }
 
 //Verifies if the signature is valid
